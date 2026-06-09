@@ -6,6 +6,7 @@ Additional tools for LLM-backed Assist for Home Assistant:
 * **Location Search** powered by Google Places
 * **Routes & Travel Time** powered by Google Routes
 * **Wikipedia**
+* **Fetch Webpage**
 * **Weather Forecast**
 * **YouTube Search and Playback**
 * **Basic Utilities** — Calculator, Kitchen Unit Converter, and Date Information
@@ -242,6 +243,36 @@ Looks up Wikipedia articles and returns summaries of the top results.
 | Setting             | Required | Default | Description                           |
 |---------------------|----------|---------|---------------------------------------|
 | `Number of Results` | ✅        | `1`     | Number of article summaries to return |
+
+---
+
+### 🌐 Fetch Webpage
+
+Fetches a user-provided HTTP or HTTPS URL and returns the page's main content in a compact form suitable for LLM consumption. Useful when the assistant needs to read a specific webpage rather than search the web.
+
+#### Requirements
+
+* No API key required.
+* Requires `beautifulsoup4` and `html5lib` (installed automatically with the integration).
+
+#### Configuration Steps
+
+1. Select "Fetch Webpage" during setup.
+2. Configure parsing options such as maximum characters, timeout, response size, link handling, and content format.
+
+#### Options
+
+| Setting | Required | Default | Description |
+|---------|----------|---------|-------------|
+| `Maximum Characters` | ✅ | `16000` | Maximum number of characters returned to the LLM |
+| `Timeout` | ✅ | `15` | Maximum time to wait for a webpage response (seconds) |
+| `Maximum Response Size` | ✅ | `5242880` | Maximum downloaded response size before parsing (bytes) |
+| `Link Handling` | ✅ | `References` | How hyperlinks are represented (`References`, `Inline links`, `Text only`, `None`) |
+| `Content Format` | ✅ | `Paragraphs` | How page structure is preserved (`Paragraphs`, `Markdown`, `Plain text`) |
+| `User Agent` | ✅ | Chrome browser UA | HTTP User-Agent header sent when fetching webpages |
+| `Bypass Cookie/Consent Gates` | ❌ | `true` | Automatically retry with browser-like headers, consent cookies, and consent URL recovery when a page is blocked |
+
+When bypass is enabled, the tool may perform up to four HTTP requests per URL. JavaScript-only pages, CAPTCHAs, and advanced bot checks (for example Reddit or Cloudflare challenges) cannot be bypassed without a browser and will still return an explicit error.
 
 ---
 

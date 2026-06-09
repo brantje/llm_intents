@@ -10,6 +10,7 @@
           "google_routes_enabled": "Enable Google Routes",
           "youtube_enabled": "Enable YouTube Search",
           "wikipedia_enabled": "Enable Wikipedia Search",
+          "fetch_webpages": "Enable Fetch Webpage",
           "weather_enabled": "Enable Weather Forecast",
           "basic_utilities_enabled": "Enable Basic Utilities",
           "home_control_enabled": "Enable Home Control API"
@@ -95,6 +96,28 @@
           "wikipedia_num_results": "Number of Results"
         }
       },
+      "fetch_webpage": {
+        "title": "Configure Fetch Webpage",
+        "description": "Configure webpage fetching and parsing settings.",
+        "data": {
+          "fetch_webpage_max_chars": "Maximum Characters",
+          "fetch_webpage_timeout": "Timeout",
+          "fetch_webpage_max_bytes": "Maximum Response Size",
+          "fetch_webpage_link_mode": "Link Handling",
+          "fetch_webpage_content_format": "Content Format",
+          "fetch_webpage_user_agent": "User Agent",
+          "fetch_webpage_bypass_gates": "Bypass Cookie/Consent Gates"
+        },
+        "data_description": {
+          "fetch_webpage_max_chars": "Maximum number of characters returned to the LLM",
+          "fetch_webpage_timeout": "Maximum time to wait for a webpage response",
+          "fetch_webpage_max_bytes": "Maximum downloaded response size before parsing",
+          "fetch_webpage_link_mode": "How hyperlinks are represented in fetched content",
+          "fetch_webpage_content_format": "How page structure is preserved in the returned content",
+          "fetch_webpage_user_agent": "HTTP User-Agent header sent when fetching webpages",
+          "fetch_webpage_bypass_gates": "Automatically retry with browser headers, consent cookies, and consent URL recovery when a page is blocked"
+        }
+      },
       "weather": {
         "title": "Configure Weather",
         "description": "Configure Weather sources.",
@@ -156,7 +179,8 @@
           "google_places_enabled": "Enable Google Places",
           "google_routes_enabled": "Enable Google Routes",
           "youtube_enabled": "Enable YouTube Search",
-          "wikipedia_enabled": "Enable Wikipedia Search"
+          "wikipedia_enabled": "Enable Wikipedia Search",
+          "fetch_webpages": "Enable Fetch Webpage"
         }
       },
       "configure_weather": {
@@ -244,6 +268,28 @@
         "description": "Configure Wikipedia search settings.",
         "data": {
           "wikipedia_num_results": "Number of Results"
+        }
+      },
+      "fetch_webpage": {
+        "title": "Configure Fetch Webpage",
+        "description": "Configure webpage fetching and parsing settings.",
+        "data": {
+          "fetch_webpage_max_chars": "Maximum Characters",
+          "fetch_webpage_timeout": "Timeout",
+          "fetch_webpage_max_bytes": "Maximum Response Size",
+          "fetch_webpage_link_mode": "Link Handling",
+          "fetch_webpage_content_format": "Content Format",
+          "fetch_webpage_user_agent": "User Agent",
+          "fetch_webpage_bypass_gates": "Bypass Cookie/Consent Gates"
+        },
+        "data_description": {
+          "fetch_webpage_max_chars": "Maximum number of characters returned to the LLM",
+          "fetch_webpage_timeout": "Maximum time to wait for a webpage response",
+          "fetch_webpage_max_bytes": "Maximum downloaded response size before parsing",
+          "fetch_webpage_link_mode": "How hyperlinks are represented in fetched content",
+          "fetch_webpage_content_format": "How page structure is preserved in the returned content",
+          "fetch_webpage_user_agent": "HTTP User-Agent header sent when fetching webpages",
+          "fetch_webpage_bypass_gates": "Automatically retry with browser headers, consent cookies, and consent URL recovery when a page is blocked"
         }
       },
       "weather": {

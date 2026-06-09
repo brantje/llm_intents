@@ -108,13 +108,16 @@ class BraveLlmContextSearchTool(SearchWebTool):
                 results = []
                 for result in response_content.get("grounding", {}).get("generic", []):
                     title = result.get("title")
+                    url = result.get("url", "")
                     snippets = result.get("snippets")
 
                     result_content = [
                         await self.cleanup_text(snippet) for snippet in snippets
                     ]
 
-                    results.append({"title": title, "content": result_content})
+                    results.append(
+                        {"title": title, "content": result_content, "url": url}
+                    )
 
                 return results
             error_msg = f"Web search received a HTTP {resp.status} error from Brave: {response_content}"

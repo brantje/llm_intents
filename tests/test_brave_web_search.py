@@ -52,6 +52,7 @@ def success_response() -> dict:
                 {
                     "title": "Test Result",
                     "description": "Test description",
+                    "url": "https://example.com/test",
                     "extra_snippets": ["Snippet 1", "Snippet 2"],
                 }
             ]
@@ -75,6 +76,7 @@ async def test_brave_search_success(
     assert len(result) == 1
     assert result[0]["title"] == "Test Result"
     assert result[0]["content"] == ["Snippet 1", "Snippet 2"]
+    assert result[0]["url"] == "https://example.com/test"
 
 
 async def test_brave_search_config_params_headers(

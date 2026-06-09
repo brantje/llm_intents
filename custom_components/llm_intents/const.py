@@ -56,6 +56,38 @@ CONF_SEARCH_PROVIDERS = {
 CONF_SEARXNG_URL = "searxng_server_url"
 CONF_SEARXNG_NUM_RESULTS = "searxng_num_results"
 
+# Fetch webpage constants
+
+CONF_FETCH_WEBPAGES = "fetch_webpages"
+CONF_FETCH_WEBPAGE_MAX_CHARS = "fetch_webpage_max_chars"
+CONF_FETCH_WEBPAGE_LINK_MODE = "fetch_webpage_link_mode"
+CONF_FETCH_WEBPAGE_USER_AGENT = "fetch_webpage_user_agent"
+CONF_FETCH_WEBPAGE_TIMEOUT = "fetch_webpage_timeout"
+CONF_FETCH_WEBPAGE_MAX_BYTES = "fetch_webpage_max_bytes"
+CONF_FETCH_WEBPAGE_CONTENT_FORMAT = "fetch_webpage_content_format"
+CONF_FETCH_WEBPAGE_BYPASS_GATES = "fetch_webpage_bypass_gates"
+
+DEFAULT_FETCH_WEBPAGE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+CONF_FETCH_WEBPAGE_LINK_MODES = {
+    "references": "References",
+    "inline": "Inline links",
+    "text": "Text only",
+    "none": "None",
+}
+
+CONF_FETCH_WEBPAGE_CONTENT_FORMATS = {
+    "paragraphs": "Paragraphs",
+    "markdown": "Markdown",
+    "text": "Plain text",
+}
+
+DEFAULT_FETCH_WEBPAGE_TIMEOUT = 15
+DEFAULT_FETCH_WEBPAGE_MAX_BYTES = 5 * 1024 * 1024
+
 # Provider API keys - shared across tools using the same backend
 
 CONF_PROVIDER_API_KEYS = "provider_api_keys"
@@ -234,6 +266,14 @@ SERVICE_DEFAULTS = {
     CONF_BRAVE_CONTEXT_THRESHOLD_MODE: "balanced",
     CONF_SEARXNG_URL: "",
     CONF_SEARXNG_NUM_RESULTS: 2,
+    CONF_FETCH_WEBPAGES: False,
+    CONF_FETCH_WEBPAGE_MAX_CHARS: 16000,
+    CONF_FETCH_WEBPAGE_LINK_MODE: "references",
+    CONF_FETCH_WEBPAGE_USER_AGENT: DEFAULT_FETCH_WEBPAGE_USER_AGENT,
+    CONF_FETCH_WEBPAGE_TIMEOUT: DEFAULT_FETCH_WEBPAGE_TIMEOUT,
+    CONF_FETCH_WEBPAGE_MAX_BYTES: DEFAULT_FETCH_WEBPAGE_MAX_BYTES,
+    CONF_FETCH_WEBPAGE_CONTENT_FORMAT: "paragraphs",
+    CONF_FETCH_WEBPAGE_BYPASS_GATES: True,
     CONF_GOOGLE_PLACES_NUM_RESULTS: 2,
     CONF_GOOGLE_PLACES_LATITUDE: "",
     CONF_GOOGLE_PLACES_LONGITUDE: "",

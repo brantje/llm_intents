@@ -15,7 +15,9 @@
     "custom_components.llm_intents"
   ],
   "requirements": [
-    "sympy>=1.14.0"
+    "sympy>=1.14.0",
+    "beautifulsoup4>=4.12.0",
+    "html5lib>=1.1"
   ],
   "version": "1.8.2"
 }

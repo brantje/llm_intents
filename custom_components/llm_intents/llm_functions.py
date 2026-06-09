@@ -17,6 +17,7 @@ from .const import (
     BASIC_UTILITIES_SERVICES_PROMPT,
     CONF_CALCULATOR_ENABLED,
     CONF_DATE_INFO_ENABLED,
+    CONF_FETCH_WEBPAGES,
     CONF_GOOGLE_PLACES_ENABLED,
     CONF_GOOGLE_ROUTES_ENABLED,
     CONF_HOME_CONTROL_ENABLED,
@@ -35,6 +36,7 @@ from .const import (
     WEATHER_SERVICES_PROMPT,
 )
 from .date_info import DateInfoTool
+from .fetch_webpage import FetchWebpageTool
 from .google_places import FindPlacesTool
 from .google_routes import GetRouteTool
 from .home_control import HomeControlAPI
@@ -64,6 +66,7 @@ SEARCH_CONF_ENABLED_MAP = [
     (CONF_GOOGLE_ROUTES_ENABLED, GetRouteTool),
     (CONF_YOUTUBE_ENABLED, SearchYouTubeTool),
     (CONF_WIKIPEDIA_ENABLED, SearchWikipediaTool),
+    (CONF_FETCH_WEBPAGES, FetchWebpageTool),
 ]
 
 WEATHER_CONF_ENABLED_MAP = [

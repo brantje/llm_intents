@@ -53,6 +53,16 @@ from .const import (
     CONF_CALCULATOR_ENABLED,
     CONF_DAILY_WEATHER_ENTITY,
     CONF_DATE_INFO_ENABLED,
+    CONF_FETCH_WEBPAGE_BYPASS_GATES,
+    CONF_FETCH_WEBPAGE_CONTENT_FORMAT,
+    CONF_FETCH_WEBPAGE_CONTENT_FORMATS,
+    CONF_FETCH_WEBPAGE_LINK_MODE,
+    CONF_FETCH_WEBPAGE_LINK_MODES,
+    CONF_FETCH_WEBPAGE_MAX_BYTES,
+    CONF_FETCH_WEBPAGE_MAX_CHARS,
+    CONF_FETCH_WEBPAGE_TIMEOUT,
+    CONF_FETCH_WEBPAGE_USER_AGENT,
+    CONF_FETCH_WEBPAGES,
     CONF_GOOGLE_API_KEY,
     CONF_GOOGLE_PLACES_API_KEY,
     CONF_GOOGLE_PLACES_ENABLED,
@@ -105,6 +115,7 @@ STEP_GOOGLE_PLACES = "google_places"
 STEP_GOOGLE_ROUTES = "google_routes"
 STEP_YOUTUBE = "youtube"
 STEP_WIKIPEDIA = "wikipedia"
+STEP_FETCH_WEBPAGE = "fetch_webpage"
 STEP_WEATHER = "weather"
 STEP_BASIC_UTILITIES = "basic_utilities"
 STEP_HOME_CONTROL = "home_control"
@@ -150,6 +161,7 @@ def get_step_user_data_schema(hass: HomeAssistant) -> vol.Schema:
         vol.Optional(CONF_GOOGLE_ROUTES_ENABLED, default=False): bool,
         vol.Optional(CONF_YOUTUBE_ENABLED, default=False): bool,
         vol.Optional(CONF_WIKIPEDIA_ENABLED, default=False): bool,
+        vol.Optional(CONF_FETCH_WEBPAGES, default=False): bool,
         vol.Optional(CONF_WEATHER_ENABLED, default=False): bool,
         vol.Optional(CONF_BASIC_UTILITIES_ENABLED, default=False): bool,
         vol.Optional(CONF_HOME_CONTROL_ENABLED, default=False): bool,
@@ -465,6 +477,78 @@ async def get_wikipedia_schema(hass: HomeAssistant) -> vol.Schema:
     )
 
 
+async def get_fetch_webpage_schema(hass: HomeAssistant) -> vol.Schema:
+    """Return the static schema for Fetch webpage service configuration."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_FETCH_WEBPAGE_MAX_CHARS,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_MAX_CHARS),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=1000,
+                    max=64000,
+                    step=1000,
+                    mode=NumberSelectorMode.SLIDER,
+                    unit_of_measurement="Characters",
+                ),
+            ),
+            vol.Required(
+                CONF_FETCH_WEBPAGE_TIMEOUT,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_TIMEOUT),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=5,
+                    max=60,
+                    step=1,
+                    mode=NumberSelectorMode.SLIDER,
+                    unit_of_measurement="Seconds",
+                ),
+            ),
+            vol.Required(
+                CONF_FETCH_WEBPAGE_MAX_BYTES,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_MAX_BYTES),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=1024 * 1024,
+                    max=10 * 1024 * 1024,
+                    step=1024 * 1024,
+                    mode=NumberSelectorMode.SLIDER,
+                    unit_of_measurement="Bytes",
+                ),
+            ),
+            vol.Required(
+                CONF_FETCH_WEBPAGE_LINK_MODE,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_LINK_MODE),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    mode=SelectSelectorMode.DROPDOWN,
+                    options=options_to_selections_dict(CONF_FETCH_WEBPAGE_LINK_MODES),
+                ),
+            ),
+            vol.Required(
+                CONF_FETCH_WEBPAGE_CONTENT_FORMAT,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_CONTENT_FORMAT),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    mode=SelectSelectorMode.DROPDOWN,
+                    options=options_to_selections_dict(
+                        CONF_FETCH_WEBPAGE_CONTENT_FORMATS,
+                    ),
+                ),
+            ),
+            vol.Required(
+                CONF_FETCH_WEBPAGE_USER_AGENT,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_USER_AGENT),
+            ): str,
+            vol.Optional(
+                CONF_FETCH_WEBPAGE_BYPASS_GATES,
+                default=SERVICE_DEFAULTS.get(CONF_FETCH_WEBPAGE_BYPASS_GATES, True),
+            ): bool,
+        },
+    )
+
+
 async def get_basic_utilities_schema(hass: HomeAssistant) -> vol.Schema:
     """Return the static schema for Basic Utilities tool configuration."""
     return vol.Schema(
@@ -600,6 +684,7 @@ SEARCH_STEP_ORDER = {
     STEP_GOOGLE_ROUTES: [CONF_GOOGLE_ROUTES_ENABLED, get_google_routes_schema],
     STEP_YOUTUBE: [CONF_YOUTUBE_ENABLED, get_youtube_schema],
     STEP_WIKIPEDIA: [CONF_WIKIPEDIA_ENABLED, get_wikipedia_schema],
+    STEP_FETCH_WEBPAGE: [CONF_FETCH_WEBPAGES, get_fetch_webpage_schema],
 }
 
 WEATHER_STEP_ORDER = {
@@ -775,6 +860,13 @@ class LlmIntentsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle Wikipedia configuration step."""
         return await self.handle_step(STEP_WIKIPEDIA, user_input)
 
+    async def async_step_fetch_webpage(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Handle Fetch webpage configuration step."""
+        return await self.handle_step(STEP_FETCH_WEBPAGE, user_input)
+
     async def async_step_weather(
         self,
         user_input: dict[str, Any] | None = None,
@@ -866,6 +958,10 @@ class LlmIntentsOptionsFlow(config_entries.OptionsFlowWithReload):
                 ): bool,
                 vol.Optional(
                     CONF_WIKIPEDIA_ENABLED,
+                    default=False,
+                ): bool,
+                vol.Optional(
+                    CONF_FETCH_WEBPAGES,
                     default=False,
                 ): bool,
             }
@@ -1032,6 +1128,13 @@ class LlmIntentsOptionsFlow(config_entries.OptionsFlowWithReload):
     ) -> FlowResult:
         """Handle Wikipedia configuration step in options flow."""
         return await self.handle_step(STEP_WIKIPEDIA, user_input)
+
+    async def async_step_fetch_webpage(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Handle Fetch webpage configuration step in options flow."""
+        return await self.handle_step(STEP_FETCH_WEBPAGE, user_input)
 
     async def async_step_configure_basic_utilities(
         self,

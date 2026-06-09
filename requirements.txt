@@ -4,3 +4,5 @@ ruff
 voluptuous
 pre-commit
 sympy
+beautifulsoup4
+html5lib

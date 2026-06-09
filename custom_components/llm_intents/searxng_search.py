@@ -44,8 +44,9 @@ class SearXngSearchTool(SearchWebTool):
                 for result in data.get("results", [])[0:num_results]:
                     title = result.get("title", "")
                     content = await self.cleanup_text(result.get("content", ""))
-
-                    item = {"title": title, "content": content}
+                    url = result.get("url", "")
+                    
+                    item = {"title": title, "content": content, "url": url}
                     results.append(item)
                 return results
             err_msg = (
