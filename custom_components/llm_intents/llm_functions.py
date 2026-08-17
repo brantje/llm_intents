@@ -8,7 +8,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 from homeassistant.helpers.llm import selector_serializer
 
-from . import CONF_SEARCH_PROVIDER, CONF_SEARCH_PROVIDER_BRAVE
 from .brave_llm_context_search import BraveLlmContextSearchTool
 from .brave_web_search import BraveSearchTool
 from .calculator import CalculatorTool
@@ -21,6 +20,8 @@ from .const import (
     CONF_GOOGLE_PLACES_ENABLED,
     CONF_GOOGLE_ROUTES_ENABLED,
     CONF_HOME_CONTROL_ENABLED,
+    CONF_SEARCH_PROVIDER,
+    CONF_SEARCH_PROVIDER_BRAVE,
     CONF_SEARCH_PROVIDER_BRAVE_LLM,
     CONF_SEARCH_PROVIDER_SEARXNG,
     CONF_UNIT_CONVERTER_ENABLED,

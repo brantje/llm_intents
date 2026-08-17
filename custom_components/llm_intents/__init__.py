@@ -1,6 +1,13 @@
 """Tools for Assist."""
 
+import logging
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+
 from .const import (
+    ADDON_NAME,
     CONF_BRAVE_ENABLED,
     CONF_GOOGLE_PLACES_API_KEY,
     CONF_HOURLY_WEATHER_ENTITY,
@@ -12,17 +19,9 @@ from .const import (
     DOMAIN,
     PROVIDER_GOOGLE,
 )
+from .llm_functions import cleanup_llm_functions, setup_llm_functions
 
 __all__ = ["DOMAIN"]
-
-import logging
-
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
-
-from .const import ADDON_NAME
-from .llm_functions import cleanup_llm_functions, setup_llm_functions
 
 _LOGGER = logging.getLogger(__name__)
 

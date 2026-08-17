@@ -7,8 +7,6 @@ import logging
 import types
 from typing import TYPE_CHECKING, Any
 
-from . import CONFIG_VERSION_2
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -98,6 +96,7 @@ from .const import (
     CONF_WIKIPEDIA_ENABLED,
     CONF_WIKIPEDIA_NUM_RESULTS,
     CONF_YOUTUBE_ENABLED,
+    CONFIG_VERSION_2,
     DOMAIN,
     PROVIDER_BRAVE,
     PROVIDER_GOOGLE,
