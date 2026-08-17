@@ -206,7 +206,7 @@ async def fetch_and_parse_url(  # noqa: PLR0911
             status="ok",
             http_status=fetch_result.http_status,
             title=state.title,
-            content_length=len(state.content),
+            content_length=state.content.text_length(),
             truncated=state.truncated,
             detail=fetch_result.final_url,
             bypass_recovered=fetch_result.bypass_recovered,
@@ -280,6 +280,7 @@ def summarize_results(results: list[SiteFetchResult]) -> str:
     return "\n".join(lines)
 
 
+@pytest.mark.enable_socket
 @pytest.mark.skipif(
     os.getenv("RUN_LIVE_FETCH_TESTS") != "1",
     reason="Set RUN_LIVE_FETCH_TESTS=1 to run live website fetch tests",
@@ -295,6 +296,7 @@ async def test_live_sites_minimum_success_rate() -> None:
     assert "news.ycombinator.com" in {result.url for result in ok + empty}
 
 
+@pytest.mark.enable_socket
 @pytest.mark.skipif(
     os.getenv("RUN_LIVE_FETCH_TESTS") != "1",
     reason="Set RUN_LIVE_FETCH_TESTS=1 to run live website fetch tests",
@@ -303,6 +305,18 @@ async def test_live_site_hacker_news_has_content() -> None:
     """Hacker News front page should produce readable content."""
     results = await run_live_site_audit(["https://news.ycombinator.com/"])
     assert results[0].status == "ok"
+    assert results[0].content_length > 200
+
+
+@pytest.mark.enable_socket
+@pytest.mark.skipif(
+    os.getenv("RUN_LIVE_FETCH_TESTS") != "1",
+    reason="Set RUN_LIVE_FETCH_TESTS=1 to run live website fetch tests",
+)
+async def test_live_site_tweakers_has_content() -> None:
+    """Tweakers front page should produce readable content."""
+    results = await run_live_site_audit(["https://tweakers.net/"])
+    assert results[0].status == "ok", results[0]
     assert results[0].content_length > 200
 
 

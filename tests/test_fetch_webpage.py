@@ -19,6 +19,7 @@ from custom_components.llm_intents.const import (
 )
 from custom_components.llm_intents.fetch_webpage import (
     FetchWebpageTool,
+    PageContent,
     detect_unfetchable_page,
     is_text_content_type,
     is_valid_http_url,
@@ -26,6 +27,16 @@ from custom_components.llm_intents.fetch_webpage import (
 )
 
 from .utils import mock_html_session, mock_html_session_sequence
+
+
+def content_text(content: PageContent) -> str:
+    """Flatten typed page content into a single string for assertions."""
+    return " ".join(block.text for block in content.blocks)
+
+
+def json_content_text(content: dict) -> str:
+    """Flatten tool response content JSON into a single string."""
+    return " ".join(block["text"] for block in content["blocks"])
 
 
 @pytest.fixture
@@ -71,6 +82,62 @@ BODY_ONLY_HTML = """
 <head><title>Body Page</title></head>
 <body>
   <p>Body paragraph with <a href="https://example.com/help">help</a>.</p>
+</body>
+</html>
+"""
+
+MULTI_ARTICLE_HTML = """
+<!DOCTYPE html>
+<html>
+<head><title>News Frontpage</title></head>
+<body>
+  <article class="headline"><h2>Small headline one</h2><p>Short teaser text.</p></article>
+  <article class="headline"><h2>Small headline two</h2><p>Another short teaser.</p></article>
+  <div class="news-list">
+    <p>Breaking story with enough detail to be useful when extracted from the page body.</p>
+    <p>Second paragraph describing the event, background, and additional context for readers.</p>
+    <p>Third paragraph with more information so the extracted content clearly exceeds the minimum.</p>
+  </div>
+</body>
+</html>
+"""
+
+TWEAKERS_HEADLINES_HTML = """
+<!DOCTYPE html>
+<html>
+<head><title>Tweakers</title></head>
+<body>
+<div class="contentArea">
+  <div class="headlines">
+    <div class="headlines-1">
+      <div class="headlines-head">
+        <h2 class="fp-title"><a href="/nieuws/list/">Laatste nieuws</a></h2>
+      </div>
+      <div class="headlineItem news">
+        <article class="headline">
+          <time class="headline--time" datetime="12:45">12:45</time>
+          <a class="headline--anchor" href="/nieuws/1">Nothing-baas: flagshipkiller kan niet meer bestaan</a>
+          <a aria-label="81 reacties" class="comment-counter" href="/nieuws/1#reacties">81</a>
+        </article>
+      </div>
+      <div class="headlineItem news">
+        <article class="headline">
+          <time class="headline--time" datetime="12:03">12:03</time>
+          <a class="headline--anchor" href="/nieuws/2">Gerucht: Microsoft overweegt afsplitsing XBOX</a>
+        </article>
+      </div>
+    </div>
+    <div class="headlines-2">
+      <h2 class="headline--day">vrijdag 12 juni</h2>
+      <div class="headlineItem news">
+        <article class="headline">
+          <time class="headline--time" datetime="09:24">09:24</time>
+          <a class="headline--anchor" href="/nieuws/3">VS blokkeert Anthropic Claude vanwege zorgen jailbreak</a>
+        </article>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
 """
@@ -211,9 +278,45 @@ def test_parse_webpage_extracts_main_content() -> None:
     )
 
     assert title == "Main Heading"
-    assert "Main Heading" in content
-    assert "documentation" in content
-    assert "Skip navigation" not in content
+    text = content_text(content)
+    assert "Main Heading" in text
+    assert "documentation" in text
+    assert "Skip navigation" not in text
+    assert truncated is False
+
+
+def test_parse_webpage_ignores_small_article_cards() -> None:
+    """Test that pages with many small article cards fall back to richer content."""
+    _, content, truncated = parse_webpage(
+        MULTI_ARTICLE_HTML,
+        base_url="https://example.com/",
+        link_mode="text",
+        content_format="paragraphs",
+        max_chars=16000,
+    )
+
+    text = content_text(content)
+    assert "Breaking story with enough detail" in text
+    assert "Small headline one" not in text
+    assert truncated is False
+
+
+def test_parse_webpage_extracts_headline_articles() -> None:
+    """Test that list-style article cards export their headline links."""
+    _, content, truncated = parse_webpage(
+        TWEAKERS_HEADLINES_HTML,
+        base_url="https://tweakers.net/",
+        link_mode="none",
+        content_format="paragraphs",
+        max_chars=16000,
+    )
+
+    text = content_text(content)
+    assert "Laatste nieuws" in text
+    assert "12:45 - Nothing-baas: flagshipkiller kan niet meer bestaan" in text
+    assert "12:03 - Gerucht: Microsoft overweegt afsplitsing XBOX" in text
+    assert "vrijdag 12 juni" in text
+    assert "09:24 - VS blokkeert Anthropic Claude vanwege zorgen jailbreak" in text
     assert truncated is False
 
 
@@ -228,8 +331,9 @@ def test_parse_webpage_fallback_to_body() -> None:
     )
 
     assert title == "Body Page"
-    assert "Body paragraph" in content
-    assert "help" in content
+    text = content_text(content)
+    assert "Body paragraph" in text
+    assert "help" in text
     assert truncated is False
 
 
@@ -244,7 +348,7 @@ def test_parse_webpage_truncation() -> None:
     )
 
     assert truncated is True
-    assert len(content) == 10
+    assert content.text_length() == 10
 
 
 def test_link_mode_references() -> None:
@@ -257,9 +361,9 @@ def test_link_mode_references() -> None:
         max_chars=16000,
     )
 
-    assert "help [1]" in content
-    assert "References:" in content
-    assert "[1] https://example.com/help" in content
+    assert "help [1]" in content_text(content)
+    assert content.references == [(1, "https://example.com/help")]
+    assert "References:" not in content_text(content)
 
 
 def test_link_mode_inline() -> None:
@@ -272,8 +376,8 @@ def test_link_mode_inline() -> None:
         max_chars=16000,
     )
 
-    assert "help (https://example.com/help)" in content
-    assert "References:" not in content
+    assert "help (https://example.com/help)" in content_text(content)
+    assert not content.references
 
 
 def test_link_mode_text() -> None:
@@ -286,8 +390,9 @@ def test_link_mode_text() -> None:
         max_chars=16000,
     )
 
-    assert "help" in content
-    assert "https://example.com/help" not in content
+    text = content_text(content)
+    assert "help" in text
+    assert "https://example.com/help" not in text
 
 
 def test_link_mode_none() -> None:
@@ -300,9 +405,27 @@ def test_link_mode_none() -> None:
         max_chars=16000,
     )
 
-    assert "help" in content
-    assert "https://example.com/help" not in content
-    assert "References:" not in content
+    text = content_text(content)
+    assert "help" in text
+    assert "https://example.com/help" not in text
+    assert not content.references
+
+
+def test_parse_webpage_typed_structure() -> None:
+    """Test that content is returned as typed blocks with separate references."""
+    _, content, _ = parse_webpage(
+        SAMPLE_HTML,
+        base_url="https://example.com/page",
+        link_mode="references",
+        content_format="paragraphs",
+        max_chars=16000,
+    )
+
+    assert content.blocks[0].type == "heading"
+    assert content.blocks[0].level == 1
+    assert content.blocks[0].text == "Main Heading"
+    assert "documentation [1]" in content.blocks[1].text
+    assert content.references == [(1, "https://example.com/docs")]
 
 
 def test_content_format_markdown() -> None:
@@ -315,7 +438,9 @@ def test_content_format_markdown() -> None:
         max_chars=16000,
     )
 
-    assert "# Main Heading" in content
+    assert content.blocks[0].type == "heading"
+    assert content.blocks[0].level == 1
+    assert content.blocks[0].text == "Main Heading"
 
 
 def test_parse_webpage_filters_navigation_noise() -> None:
@@ -329,10 +454,11 @@ def test_parse_webpage_filters_navigation_noise() -> None:
     )
 
     assert title == "Events"
-    assert "Summer Festival" in content
-    assert "Jazz Night" in content
-    assert "HOME ABOUT CONTACT" not in content.replace(" ", "")
-    assert "Privacy" not in content
+    text = content_text(content)
+    assert "Summer Festival" in text
+    assert "Jazz Night" in text
+    assert "HOME ABOUT CONTACT" not in text.replace(" ", "")
+    assert "Privacy" not in text
     assert truncated is False
 
 
@@ -347,9 +473,10 @@ def test_parse_webpage_elementor_content() -> None:
     )
 
     assert title == "Membership Plans | Example Site"
-    assert "Membership options" in content
-    assert "Includes access for up to four people" in content
-    assert "Family plan" in content
+    text = content_text(content)
+    assert "Membership options" in text
+    assert "Includes access for up to four people" in text
+    assert "Family plan" in text
     assert truncated is False
 
 
@@ -364,7 +491,7 @@ def test_parse_webpage_keeps_super_sidebar_wrapper() -> None:
     )
 
     assert title == "Explore Projects"
-    assert "Popular open source projects hosted on GitLab." in content
+    assert "Popular open source projects hosted on GitLab." in content_text(content)
     assert truncated is False
 
 
@@ -379,9 +506,10 @@ def test_parse_webpage_extracts_table_rows() -> None:
     )
 
     assert title == "Hacker News"
-    assert "Show HN: Example project alpha" in content
-    assert "Ask HN: What are you working on this week?" in content
-    assert len(content) > 100
+    text = content_text(content)
+    assert "Show HN: Example project alpha" in text
+    assert "Ask HN: What are you working on this week?" in text
+    assert content.text_length() > 100
     assert truncated is False
 
 
@@ -458,7 +586,8 @@ async def test_fetch_success(tool: FetchWebpageTool) -> None:
 
     assert result["url"] == "https://example.com/page"
     assert result["title"] == "Main Heading"
-    assert "Main paragraph" in result["content"]
+    assert "Main paragraph" in json_content_text(result["content"])
+    assert result["content"]["blocks"]
     assert result["truncated"] is False
     assert "instruction" in result
 
@@ -647,7 +776,7 @@ async def test_bypass_consent_callback_url(tool: FetchWebpageTool) -> None:
         )
 
     assert result["url"] == "https://example.com/article"
-    assert "Breaking News" in result["content"]
+    assert "Breaking News" in json_content_text(result["content"])
     assert session.request_count["value"] <= 4
 
 
@@ -681,7 +810,7 @@ async def test_bypass_consent_cookies(tool: FetchWebpageTool) -> None:
             llm.LLMContext(DOMAIN, None, None, None, None),
         )
 
-    assert "Breaking News" in result["content"]
+    assert "Breaking News" in json_content_text(result["content"])
     assert session.request_count["value"] <= 4
 
 
@@ -715,7 +844,7 @@ async def test_bypass_browser_headers(tool: FetchWebpageTool) -> None:
             llm.LLMContext(DOMAIN, None, None, None, None),
         )
 
-    assert "Breaking News" in result["content"]
+    assert "Breaking News" in json_content_text(result["content"])
     assert session.request_count["value"] <= 4
 
 

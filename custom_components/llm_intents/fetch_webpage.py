@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlparse
 
@@ -157,6 +158,15 @@ BLOCK_TAGS = [
     "dd",
 ]
 
+COLLECTION_TAGS = [*BLOCK_TAGS, "article"]
+
+LIST_ARTICLE_ANCHOR_CLASS_TOKENS = (
+    "headline",
+    "entry-title",
+    "story-link",
+    "title",
+)
+
 DIV_BLOCK_MIN_CHARS = 40
 NOISE_SURVIVABILITY_RATIO = 0.6
 MIN_MAIN_CONTENT_CHARS = 100
@@ -173,14 +183,89 @@ If the content does not contain enough information, say so clearly.
 Do not invent details that are not supported by the fetched content.
 """.strip()
 
-HEADING_PREFIXES = {
-    "h1": "# ",
-    "h2": "## ",
-    "h3": "### ",
-    "h4": "#### ",
-    "h5": "##### ",
-    "h6": "###### ",
-}
+HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+
+
+@dataclass
+class ContentBlock:
+    """A typed block of extracted page content."""
+
+    type: str
+    text: str
+    level: int | None = None
+
+
+@dataclass
+class PageContent:
+    """Structured page content with typed blocks and link references."""
+
+    blocks: list[ContentBlock]
+    references: list[tuple[int, str]] = field(default_factory=list)
+
+    def text_length(self) -> int:
+        """Return total character count across all blocks."""
+        return sum(len(block.text.strip()) for block in self.blocks)
+
+    def is_empty(self) -> bool:
+        """Return True when no substantive text was extracted."""
+        return self.text_length() == 0
+
+    def normalize(self) -> PageContent:
+        """Normalize whitespace in each block."""
+        normalized_blocks: list[ContentBlock] = []
+        for block in self.blocks:
+            text = normalize_whitespace(block.text)
+            if text:
+                normalized_blocks.append(
+                    ContentBlock(block.type, text, block.level),
+                )
+        return PageContent(normalized_blocks, self.references)
+
+    def truncate(self, max_chars: int) -> tuple[PageContent, bool]:
+        """Truncate content to max_chars and return whether truncation occurred."""
+        total = 0
+        truncated_blocks: list[ContentBlock] = []
+        was_truncated = False
+
+        for block in self.blocks:
+            if total >= max_chars:
+                was_truncated = True
+                break
+
+            remaining = max_chars - total
+            if len(block.text) <= remaining:
+                truncated_blocks.append(block)
+                total += len(block.text)
+                continue
+
+            truncated_blocks.append(
+                ContentBlock(
+                    block.type,
+                    block.text[:remaining].rstrip(),
+                    block.level,
+                ),
+            )
+            was_truncated = True
+            break
+
+        if len(truncated_blocks) < len(self.blocks):
+            was_truncated = True
+
+        return PageContent(truncated_blocks, self.references), was_truncated
+
+    def to_json(self) -> dict:
+        """Serialize to the tool response content object."""
+        blocks_json: list[dict] = []
+        for block in self.blocks:
+            item = {"type": block.type, "text": block.text}
+            if block.level is not None:
+                item["level"] = block.level
+            blocks_json.append(item)
+
+        references_json = [
+            {"index": index, "url": url} for index, url in self.references
+        ]
+        return {"blocks": blocks_json, "references": references_json}
 
 CONSENT_URL_PATTERN = re.compile(
     r"consent|privacy-gate|cookie|gdpr|myprivacy|cmp\.",
@@ -293,7 +378,7 @@ class FetchWebpageTool(BaseTool):
                 if state.gate.value != "none":
                     payload["reason"] = state.gate.value
                 return payload
-            if not state.content.strip():
+            if state.content.is_empty():
                 return {
                     "error": "No readable content could be extracted from the page",
                     "url": fetch_result.final_url,
@@ -302,7 +387,7 @@ class FetchWebpageTool(BaseTool):
         return {
             "url": fetch_result.final_url,
             "title": state.title,
-            "content": state.content,
+            "content": state.content.to_json(),
             "truncated": state.truncated,
             "instruction": RESPONSE_INSTRUCTION,
         }
@@ -386,15 +471,20 @@ def parse_webpage(
     link_mode: str,
     content_format: str,
     max_chars: int,
-) -> tuple[str, str, bool]:
+) -> tuple[str, PageContent, bool]:
     """Parse HTML into title, content, and truncation flag."""
     soup = BeautifulSoup(html, "html5lib")
     root = find_main_content(soup)
     remove_noise(root)
     title = extract_title(soup, root)
 
-    content = render_content(root, base_url=base_url, link_mode=link_mode, content_format=content_format)
-    if not content.strip():
+    content = render_content(
+        root,
+        base_url=base_url,
+        link_mode=link_mode,
+        content_format=content_format,
+    )
+    if content.is_empty():
         root = find_main_content(soup)
         remove_tag_noise(root)
         content = render_content(
@@ -404,10 +494,8 @@ def parse_webpage(
             content_format=content_format,
         )
 
-    content = normalize_whitespace(content)
-    truncated = len(content) > max_chars
-    if truncated:
-        content = content[:max_chars].rstrip()
+    content = content.normalize()
+    content, truncated = content.truncate(max_chars)
 
     return title, content, truncated
 
@@ -449,12 +537,30 @@ def normalize_site_title(title: str) -> str:
     return title
 
 
+def best_semantic_content_element(soup: BeautifulSoup, selector: str) -> Tag | None:
+    """Return the semantic element with the most text, if any meet the minimum."""
+    best: Tag | None = None
+    best_len = 0
+    for element in soup.select(selector):
+        text_len = len(element.get_text(strip=True))
+        if text_len >= MIN_MAIN_CONTENT_CHARS and text_len > best_len:
+            best = element
+            best_len = text_len
+    return best
+
+
 def find_main_content(soup: BeautifulSoup) -> Tag:
     """Find the most relevant content container."""
-    for selector in ("main", "article", '[role="main"]'):
-        element = soup.select_one(selector)
-        if element and len(element.get_text(strip=True)) >= MIN_MAIN_CONTENT_CHARS:
+    for selector in ("main", '[role="main"]'):
+        element = best_semantic_content_element(soup, selector)
+        if element is not None:
             return element
+
+    articles = soup.select("article")
+    if len(articles) == 1:
+        text_len = len(articles[0].get_text(strip=True))
+        if text_len >= MIN_MAIN_CONTENT_CHARS:
+            return articles[0]
 
     if not soup.body:
         return soup
@@ -556,19 +662,37 @@ def class_id_is_content(classes: str, element_id: str) -> bool:
     return False
 
 
+def block_type_from_tag(tag_name: str) -> tuple[str, int | None]:
+    """Map an HTML tag name to a content block type and optional heading level."""
+    if tag_name in HEADING_TAGS:
+        return "heading", int(tag_name[1])
+    if tag_name == "li":
+        return "list_item", None
+    if tag_name == "blockquote":
+        return "blockquote", None
+    if tag_name == "pre":
+        return "pre", None
+    return "paragraph", None
+
+
+def references_to_indexed(
+    references: list[tuple[str, str]],
+) -> list[tuple[int, str]]:
+    """Convert internal reference tuples to indexed URL pairs."""
+    return [(index, href) for index, (_, href) in enumerate(references, start=1)]
+
+
 def render_content(
     root: Tag,
     *,
     base_url: str,
     link_mode: str,
     content_format: str,
-) -> str:
+) -> PageContent:
     """Render parsed content using the configured format."""
-    if content_format == "markdown":
-        return render_markdown(root, base_url=base_url, link_mode=link_mode)
     if content_format == "text":
         return render_plain_text(root, base_url=base_url, link_mode=link_mode)
-    return render_paragraphs(root, base_url=base_url, link_mode=link_mode)
+    return render_structured(root, base_url=base_url, link_mode=link_mode)
 
 
 def element_depth(element: Tag) -> int:
@@ -672,12 +796,12 @@ def is_substantive_block(element: Tag, text: str) -> bool:
     return True
 
 
-def deduplicate_blocks(blocks: list[str]) -> list[str]:
+def deduplicate_content_blocks(blocks: list[ContentBlock]) -> list[ContentBlock]:
     """Remove repeated blocks commonly found in menus and footers."""
     seen: set[str] = set()
-    unique_blocks: list[str] = []
+    unique_blocks: list[ContentBlock] = []
     for block in blocks:
-        key = block.casefold()
+        key = block.text.casefold()
         if key in seen:
             continue
         seen.add(key)
@@ -685,9 +809,67 @@ def deduplicate_blocks(blocks: list[str]) -> list[str]:
     return unique_blocks
 
 
-def collect_div_text_blocks(root: Tag) -> list[str]:
+def is_noise_anchor(anchor: Tag) -> bool:
+    """Return True when an anchor is auxiliary navigation rather than a headline."""
+    classes = " ".join(anchor.get("class", [])).lower()
+    if "comment-counter" in classes:
+        return True
+    if anchor.get("data-popup"):
+        return True
+
+    aria_label = (anchor.get("aria-label") or "").lower()
+    if "reacties" in aria_label or "comments" in aria_label:
+        return True
+
+    text = normalize_whitespace(anchor.get_text(" ", strip=True)).lower()
+    if len(text) <= 3:
+        return True
+    return text.startswith("bekijk alle")
+
+
+def primary_article_anchor(article: Tag) -> Tag | None:
+    """Return the main content link inside a list-style article element."""
+    candidates = [
+        anchor
+        for anchor in article.find_all("a", href=True)
+        if not is_noise_anchor(anchor)
+    ]
+    if not candidates:
+        return None
+
+    for anchor in candidates:
+        classes = " ".join(anchor.get("class", [])).lower()
+        if any(token in classes for token in LIST_ARTICLE_ANCHOR_CLASS_TOKENS):
+            return anchor
+
+    return max(candidates, key=lambda anchor: len(anchor.get_text(strip=True)))
+
+
+def extract_list_article_text(article: Tag) -> str:
+    """Extract a concise headline from article cards without nested headings."""
+    anchor = primary_article_anchor(article)
+    if anchor is None:
+        return ""
+
+    parts: list[str] = []
+    time_element = article.find("time")
+    if time_element is not None:
+        time_text = normalize_whitespace(time_element.get_text(" ", strip=True))
+        if time_text:
+            parts.append(time_text)
+
+    title_text = normalize_whitespace(anchor.get_text(" ", strip=True))
+    if title_text:
+        parts.append(title_text)
+
+    if len(parts) == 2:
+        return f"{parts[0]} - {parts[1]}"
+    return " ".join(parts)
+
+
+def collect_div_content_blocks(root: Tag) -> list[ContentBlock]:
     """Collect substantive text from div elements without nested block tags."""
-    blocks: list[str] = []
+    blocks: list[ContentBlock] = []
     for element in root.find_all("div"):
         if element.find(BLOCK_TAGS):
             continue
@@ -697,55 +879,27 @@ def collect_div_text_blocks(root: Tag) -> list[str]:
             continue
         if not is_substantive_block(element, text):
             continue
-        blocks.append(text)
+        blocks.append(ContentBlock("paragraph", text))
 
     return blocks
 
 
-def collect_text_blocks(root: Tag) -> list[str]:
-    """Collect meaningful text blocks from a content root."""
-    blocks: list[str] = []
-    for element in root.find_all(BLOCK_TAGS):
-        if element.find_parent(BLOCK_TAGS) and element.name in {"li", "td", "th", "dd"}:
+def collect_content_blocks(root: Tag) -> list[ContentBlock]:
+    """Collect meaningful typed blocks from a content root."""
+    blocks: list[ContentBlock] = []
+    for element in root.find_all(COLLECTION_TAGS):
+        if element.name == "article":
+            if element.find_parent("article"):
+                continue
+            if element.find(BLOCK_TAGS):
+                continue
+
+            text = extract_list_article_text(element)
+            if not is_substantive_block(element, text):
+                continue
+            blocks.append(ContentBlock("list_item", text))
             continue
 
-        text = normalize_whitespace(element.get_text(" ", strip=True))
-        if not is_substantive_block(element, text):
-            continue
-        blocks.append(text)
-
-    if not blocks:
-        blocks = collect_div_text_blocks(root)
-
-    return deduplicate_blocks(blocks)
-
-
-def render_paragraphs(root: Tag, *, base_url: str, link_mode: str) -> str:
-    """Render compact paragraph text."""
-    working_root = clone_tag(root)
-    references: list[tuple[str, str]] = []
-    if link_mode != "none":
-        transform_links(working_root, base_url=base_url, link_mode=link_mode, references=references)
-
-    blocks = collect_text_blocks(working_root)
-    if not blocks:
-        text = normalize_whitespace(working_root.get_text(" ", strip=True))
-        if len(text) >= MIN_MAIN_CONTENT_CHARS:
-            blocks = [text]
-
-    content = "\n\n".join(block for block in blocks if block)
-    return append_references(content, references, link_mode)
-
-
-def render_markdown(root: Tag, *, base_url: str, link_mode: str) -> str:
-    """Render markdown-ish text preserving basic structure."""
-    working_root = clone_tag(root)
-    references: list[tuple[str, str]] = []
-    if link_mode != "none":
-        transform_links(working_root, base_url=base_url, link_mode=link_mode, references=references)
-
-    blocks: list[str] = []
-    for element in working_root.find_all(BLOCK_TAGS):
         if element.find_parent(BLOCK_TAGS) and element.name in {"li", "td", "th", "dd"}:
             continue
 
@@ -753,36 +907,50 @@ def render_markdown(root: Tag, *, base_url: str, link_mode: str) -> str:
         if not is_substantive_block(element, text):
             continue
 
-        if element.name in HEADING_PREFIXES:
-            blocks.append(f"{HEADING_PREFIXES[element.name]}{text}")
-        elif element.name == "li":
-            blocks.append(f"- {text}")
-        elif element.name == "blockquote":
-            blocks.append(f"> {text}")
-        else:
-            blocks.append(text)
+        block_type, level = block_type_from_tag(element.name)
+        blocks.append(ContentBlock(block_type, text, level))
 
     if not blocks:
-        blocks = collect_div_text_blocks(working_root)
+        blocks = collect_div_content_blocks(root)
 
-    blocks = deduplicate_blocks(blocks)
-    if not blocks:
-        text = normalize_whitespace(working_root.get_text(" ", strip=True))
-        if len(text) >= MIN_MAIN_CONTENT_CHARS:
-            blocks = [text]
-
-    content = "\n\n".join(block for block in blocks if block)
-    return append_references(content, references, link_mode)
+    return deduplicate_content_blocks(blocks)
 
 
-def render_plain_text(root: Tag, *, base_url: str, link_mode: str) -> str:
-    """Render minimal cleaned text."""
+def render_structured(root: Tag, *, base_url: str, link_mode: str) -> PageContent:
+    """Render typed content blocks preserving page structure."""
     working_root = clone_tag(root)
     references: list[tuple[str, str]] = []
     if link_mode != "none":
-        transform_links(working_root, base_url=base_url, link_mode=link_mode, references=references)
-    content = normalize_whitespace(working_root.get_text(" ", strip=True))
-    return append_references(content, references, link_mode)
+        transform_links(
+            working_root,
+            base_url=base_url,
+            link_mode=link_mode,
+            references=references,
+        )
+
+    blocks = collect_content_blocks(working_root)
+    if not blocks:
+        text = normalize_whitespace(working_root.get_text(" ", strip=True))
+        if len(text) >= MIN_MAIN_CONTENT_CHARS:
+            blocks = [ContentBlock("paragraph", text)]
+
+    return PageContent(blocks, references_to_indexed(references))
+
+
+def render_plain_text(root: Tag, *, base_url: str, link_mode: str) -> PageContent:
+    """Render minimal cleaned text as a single paragraph block."""
+    working_root = clone_tag(root)
+    references: list[tuple[str, str]] = []
+    if link_mode != "none":
+        transform_links(
+            working_root,
+            base_url=base_url,
+            link_mode=link_mode,
+            references=references,
+        )
+    text = normalize_whitespace(working_root.get_text(" ", strip=True))
+    blocks = [ContentBlock("paragraph", text)] if text else []
+    return PageContent(blocks, references_to_indexed(references))
 
 
 def clone_tag(root: Tag) -> Tag:
@@ -840,22 +1008,6 @@ def get_reference_number(href: str, references: list[tuple[str, str]]) -> int:
 
     references.append(("", href))
     return len(references)
-
-
-def append_references(
-    content: str,
-    references: list[tuple[str, str]],
-    link_mode: str,
-) -> str:
-    """Append numbered references when using reference link mode."""
-    if link_mode != "references" or not references:
-        return content
-
-    lines = [content, "", "References:"]
-    for index, (_, href) in enumerate(references, start=1):
-        lines.append(f"[{index}] {href}")
-
-    return "\n".join(lines)
 
 
 def normalize_whitespace(text: str) -> str:

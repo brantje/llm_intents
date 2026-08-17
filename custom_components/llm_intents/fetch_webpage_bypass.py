@@ -35,6 +35,7 @@ from .fetch_webpage import (
     JS_REQUIRED_PATTERN,
     MIN_MAIN_CONTENT_CHARS,
     SPA_HTML_MARKERS,
+    PageContent,
     detect_unfetchable_page,
     is_text_content_type,
     parse_webpage,
@@ -99,6 +100,8 @@ DOMAIN_CONSENT_COOKIES: dict[str, dict[str, str]] = {
     "myprivacy.dpgmedia.nl": DPG_CONSENT_COOKIES,
     "myprivacy.dpgmedia.be": DPG_CONSENT_COOKIES,
     "nu.nl": DPG_CONSENT_COOKIES,
+    "tweakers.net": DPG_CONSENT_COOKIES,
+    "tweakers.be": DPG_CONSENT_COOKIES,
     "hln.be": DPG_CONSENT_COOKIES,
 }
 
@@ -141,7 +144,7 @@ class ParsedPageState:
     """Parsed page content and gate metadata."""
 
     title: str
-    content: str
+    content: PageContent
     truncated: bool
     gate: GateType
     gate_message: str | None = None
@@ -283,7 +286,7 @@ def parse_page_state(
         content_format=config.content_format,
         max_chars=config.max_chars,
     )
-    content_len = len(content.strip())
+    content_len = content.text_length()
     gate = GateType.NONE
     gate_message = None
 
@@ -307,7 +310,7 @@ def parse_page_state(
 
 def content_is_usable(state: ParsedPageState) -> bool:
     """Return True when parsed content is sufficient."""
-    return len(state.content.strip()) > MIN_MAIN_CONTENT_CHARS
+    return state.content.text_length() > MIN_MAIN_CONTENT_CHARS
 
 
 def merge_cookies_for_url(url: str, existing: dict[str, str] | None = None) -> dict[str, str]:
@@ -496,7 +499,7 @@ def gate_error_payload(
         if state.gate != GateType.NONE:
             payload["reason"] = state.gate.value
         return payload
-    if not state.content.strip():
+    if state.content.is_empty():
         return {
             "error": "No readable content could be extracted from the page",
             "url": final_url,
